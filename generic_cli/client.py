@@ -68,7 +68,8 @@ class Client:
 
 
 class AutoResolveClient(Client):
-    def __init__(self, name: str, env: str) -> None:
+    def __init__(self, name: str, env: str, prefix: str = '') -> None:
+        super().__init__(None, prefix)
         self.name = name
         self.env = env
 
@@ -81,7 +82,9 @@ class AutoResolveClient(Client):
 
     @cache_for(minutes(60))
     async def get_host(self) -> str:
-        host = await CrossRoads(self.env).get(self.name)
+        crossroads = CrossRoads(self.env)
+        host = await crossroads.get(self.name)
+        await crossroads.close()
         log.info("Resolved %s's host to %r [name=%r env=%r]",
                  self.__class__.__name__,
                  host,
