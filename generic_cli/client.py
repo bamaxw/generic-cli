@@ -38,6 +38,7 @@ class Client:
     async def issue(self, method: str, path: str, *a, **kw) -> AsyncIterator[Response]:
         base_url = await self.get_base_url()
         url = f'{base_url}{path}'
+        log.info('Getting url %r', url)
         async with self.session.request(method, url, *a, **kw) as res:
             yield res
 
