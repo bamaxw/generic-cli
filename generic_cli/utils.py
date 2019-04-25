@@ -19,7 +19,7 @@ class CacheFor:
         self.timeout = timeout
 
     def __call__(self, func: Callable[[object], Awaitable[Any]]) -> Callable[[object], Awaitable[Any]]:
-        if inspect.signature(func) not in ('(self)', '()'):
+        if str(inspect.signature(func)) not in ('(self)', '()'):
             raise TypeError('CacheFor can be called on a method or function with no arguments only!')
         @wraps(func)
         async def _method_wrapper(*a):
