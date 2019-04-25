@@ -1,0 +1,24 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[[source]]
+name = "ai-unit-dev"
+verify_ssl = false
+url = "http://ec2-34-248-141-21.eu-west-1.compute.amazonaws.com/ai-unit/dev"
+
+[[source]]
+name = "ai-unit-prod"
+verify_ssl = false
+url = "http://ec2-34-248-141-21.eu-west-1.compute.amazonaws.com/ai-unit/prod"
+
+
+[packages]
+aiohttp = "*"
+crossroads = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.7"

@@ -1,1 +1,1 @@
-# generic-cli
+# GenericAPI
