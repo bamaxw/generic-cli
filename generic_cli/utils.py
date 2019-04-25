@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict
+from typing import Any, Awaitable, Callable, Dict
 from functools import wraps
 import inspect
 import time
@@ -13,12 +13,12 @@ def cache_for(seconds: float) -> 'CacheFor':
 
 
 class CacheFor:
-    _func_cache: Dict[Callable[[], Any], Any] = {}
-    _func_timestamps: Dict[Callable[[], Any], float] = {}
+    _func_cache: Dict[Callable[[object], Awaitable[Any]], Any] = {}
+    _func_timestamps: Dict[Callable[[object], Awaitable[Any]], float] = {}
     def __init__(self, timeout: float) -> None:
         self.timeout = timeout
 
-    def __call__(self, func: Callable[[], Any]) -> Callable[[], Any]:
+    def __call__(self, func: Callable[[object], Awaitable[Any]]) -> Callable[[object], Awaitable[Any]]:
         if inspect.signature(func) not in ('(self)', '()'):
             raise TypeError('CacheFor can be called on a method or function with no arguments only!')
         @wraps(func)
