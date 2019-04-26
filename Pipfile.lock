@@ -112,10 +112,10 @@
         },
         "crossroads": {
             "hashes": [
-                "sha256:13d174944beefde204f9b63c5093a4ba8c7054f88127ab5db76003f684ba17b2"
+                "sha256:d309f05564b34ea086f46b75940773b538135b0897a02222f8be05a52be011eb"
             ],
             "index": "pypi",
-            "version": "==0.0.5"
+            "version": "==0.0.7"
         },
         "docutils": {
             "hashes": [

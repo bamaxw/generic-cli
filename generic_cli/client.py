@@ -84,7 +84,11 @@ class AutoResolveClient(Client):
         self.env = env
 
     async def __aenter__(self) -> 'AutoResolveClient':
-        await self.get_host()
+        try:
+            await self.get_host()
+        except:
+            await self.close()
+            raise
         return self
 
     @cache_for(minutes(60))
