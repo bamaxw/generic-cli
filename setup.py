@@ -19,4 +19,4 @@ setup(name="generic-cli",
       long_description=read("README.md"),
       packages=find_packages(),
       python_requires=">=3.7",
-      install_requires=['aiohttp', 'crossroads'])
+      install_requires=['aiohttp', 'crossroads', 'tenacity'])
