@@ -14,8 +14,8 @@ log = logging.getLogger(__name__)
 
 class Client:
     def __init__(self, host: str, prefix: str = '') -> None:
-        self.host = host
-        self.prefix = prefix
+        self._host = host
+        self._prefix = prefix
         self.session = Session()
 
     async def __aenter__(self) -> 'Client':
@@ -30,12 +30,12 @@ class Client:
 
     async def get_host(self) -> str:
         '''Returns clients host url'''
-        return self.host
+        return self._host
 
     async def get_base_url(self) -> str:
         '''Returns clients base url'''
         host = await self.get_host()
-        return f'{host}{self.prefix}'
+        return f'{host}{self._prefix}'
 
     @asynccontextmanager
     async def issue(self, method: str, path: str, *a, **kw) -> AsyncIterator[Response]:
@@ -83,17 +83,14 @@ class AutoResolveClient(Client):
         self.name = name
         self.env = env
 
-    @classmethod
-    async def resolve(cls, *a, **kw) -> 'AutoResolveClient':
-        '''Instantiate AutoResolveClient and immediatelly resolve its host'''
-        instance = cls(*a, **kw)
-        await instance.get_host()
-        return instance
+    async def __aenter__(self) -> 'AutoResolveClient':
+        await self.get_host()
+        return self
 
     @cache_for(minutes(60))
     async def get_host(self) -> str:
-        if self.host is not None:
-            return self.host
+        if self._host is not None:
+            return await super().get_host()
         crossroads = CrossRoads(self.env)
         host = await crossroads.get(self.name)
         await crossroads.close()

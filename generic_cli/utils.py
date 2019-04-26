@@ -38,8 +38,10 @@ class CacheFor:
                             f' Detected signature: {str(sig)}')
         self._func_timestamps[func] = 0
         @wraps(func)
-        async def _method_wrapper(*a):
-            if self._func_timestamps[func] + self.timeout <= time.time():
+        async def _method_wrapper(*a, no_cache: bool = False):
+            next_call_ts = self._func_timestamps[func]
+            if no_cache or next_call_ts <= time.time():
                 self._func_cache[func] = await func(*a)
+                self._func_timestamps[func] = time.time() + self.timeout
             return self._func_cache[func]
         return _method_wrapper
