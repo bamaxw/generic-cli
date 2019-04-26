@@ -9,9 +9,9 @@ logging.getLogger('botocore').setLevel(logging.WARNING)
 
 async def main():
     async with Client('stag', service_name='skyscraper-api') as cli:
-        print(cli, cli.__dict__, await cli.get_host())
+        print(await cli.get_host())
     async with Client('stag', service_name='not-exist') as cli:
-        print(cli, cli.__dict__, await cli.get_host())
+        print(await cli.get_host())
 
 
 if __name__ == '__main__':

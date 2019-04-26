@@ -9,35 +9,24 @@ from aiohttp import ClientResponse as Response, ClientSession as Session
 from crossroads import CrossRoads
 
 from .utils import cache_for, minutes
-from .config import SessionConfig
+from .config import SessionConfig, PolicyType
 
 log = logging.getLogger(__name__)
 
 
 class Client:
-    '''
-    Generic-Client Client
-    implements generic connections management
-    host management and anything that any specific clients might use
-    commonly
-    Arguments:
-        host   -- url of the host to connect to
-        prefix -- a base path present in each url
-        config -- ClientSession management config
-    '''
-    def __init__(self, host: str, prefix: str = '', config: Union[None, Dict[str, Any], SessionConfig] = None) -> None:
-        self._host = host
-        self._prefix = prefix
-
-    async def __aenter__(self) -> 'Client':
-        return self
-
-
-
-class Client:
+    # Client allows some attributes to be set in a declarative way
+    # like so
+    # Client attributes
+    __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '_session')
     host: Optional[str] = None
     service_name: Optional[str] = None
     prefix: str = ''
+    # Config attributes
+    __config_fields__ = ('retry_codes', 'retry_policy', 'timeout')
+    retry_codes: Optional[Container[Union[str, int]]]
+    retry_policy: Dict[str, PolicyType]
+    timeout: int
     def __init__(self,
                  env: Optional[str] = None,
                  *,
@@ -52,7 +41,8 @@ class Client:
             raise TypeError("'prefix' specified at both class and instance level")
         # Validate config type
         if isinstance(config, (dict, type(None))):
-            session_config = SessionConfig(**config or {})
+            config = dict(self._get_cls_config(), **config or {})
+            session_config = SessionConfig(**config)
         elif isinstance(config, SessionConfig):
             session_config = config
         else:
@@ -153,3 +143,10 @@ class Client:
         '''Issues a head request'''
         async with self.issue('HEAD', *a, **kw) as res:
             yield res
+
+    def _get_cls_config(self) -> Dict[str, Any]:
+        cfg: Dict[str, Any] = {}
+        for config_field in self.__config_fields__:
+            if hasattr(self.__class__, config_field):
+                cfg[config_field] = getattr(self.__class__, config_field)
+        return cfg
