@@ -1,5 +1,6 @@
-from typing import AsyncIterator, Optional, Type
+from typing import Any, AsyncIterator, Container, Dict, Optional, Type, Union
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from types import TracebackType
 import logging
 
@@ -8,14 +9,33 @@ from aiohttp import ClientResponse as Response, ClientSession as Session
 from crossroads import CrossRoads
 
 from .utils import cache_for, minutes
+from .config import SessionConfig
 
 log = logging.getLogger(__name__)
 
 
 class Client:
-    def __init__(self, host: str, prefix: str = '') -> None:
+    '''
+    Generic-Client Client
+    implements generic connections management
+    host management and anything that any specific clients might use
+    commonly
+    Arguments:
+        host   -- url of the host to connect to
+        prefix -- a base path present in each url
+        config -- ClientSession management config
+    '''
+    def __init__(self, host: str, prefix: str = '', config: Union[None, Dict[str, Any], SessionConfig] = None) -> None:
         self._host = host
         self._prefix = prefix
+        if isinstance(config, (dict, type(None))):
+            session_config = SessionConfig(**config or {})
+        elif isinstance(config, SessionConfig):
+            session_config = config
+        else:
+            raise TypeError(f"config type {type(config)} could not be recognized,"
+                            " please use a dictionary or generic_cli.config.SessionConfig")
+        self.config = session_config
         self.session = Session()
 
     async def __aenter__(self) -> 'Client':
@@ -38,12 +58,12 @@ class Client:
         return f'{host}{self._prefix}'
 
     @asynccontextmanager
-    async def issue(self, method: str, path: str, *a, **kw) -> AsyncIterator[Response]:
+    async def issue(self, method: str, path: str, **kw) -> AsyncIterator[Response]:
         '''Manages all request dispatches'''
         base_url = await self.get_base_url()
         url = f'{base_url}{path}'
         log.info('Getting url %r', url)
-        async with self.session.request(method, url, *a, **kw) as res:
+        async with self.session.request(method, url, **kw) as res:
             yield res
 
     @asynccontextmanager
@@ -78,13 +98,37 @@ class Client:
 
 
 class AutoResolveClient(Client):
-    def __init__(self, name: str, env: str, host: Optional[str] = None, prefix: str = '') -> None:
-        super().__init__(host, prefix)
+    host: Optional[str] = None
+    service_name: Optional[str] = None
+    prefix: str = ''
+    def __init__(self,
+                 env: Optional[str] = None,
+                 name: Optional[str] = None,
+                 host: Optional[str] = None,
+                 prefix: str = '',
+                 config: Union[None, Dict[str, Any], SessionConfig] = None) -> None:
+        if self.service_name and name:
+            raise TypeError("'service_name' specified at both class and instance level")
+        if self.host and host:
+            raise TypeError("'host' specified at both class and instance level")
+        if self.prefix and prefix:
+            raise TypeError("'prefix' specified at both class and instance level")
+        name = name or self.service_name
+        host = host or self.host
+        prefix = (prefix
+                  if prefix is None
+                  else self.prefix)
+        if not host:
+            if not name and not env:
+                raise TypeError("In auto-resolve mode both 'service_name' and 'env' must be provided")
+        super().__init__(host, prefix, config)
         self.name = name
         self.env = env
 
     async def __aenter__(self) -> 'AutoResolveClient':
         try:
+            import inspect
+            print(inspect.signature(self.get_host))
             await self.get_host()
         except:
             await self.close()
