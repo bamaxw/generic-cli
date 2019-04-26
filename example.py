@@ -1,12 +1,16 @@
 import asyncio
+import logging
 
-from generic_cli import AutoResolveClient
+from generic_cli import Client
+
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger('botocore').setLevel(logging.WARNING)
 
 
 async def main():
-    async with AutoResolveClient('skyscraper-api', 'stag') as cli:
+    async with Client('stag', service_name='skyscraper-api') as cli:
         print(cli, cli.__dict__, await cli.get_host())
-    async with AutoResolveClient('nonexistant', 'stag') as cli:
+    async with Client('stag', service_name='not-exist') as cli:
         print(cli, cli.__dict__, await cli.get_host())
 
 

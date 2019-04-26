@@ -28,6 +28,29 @@ class Client:
     def __init__(self, host: str, prefix: str = '', config: Union[None, Dict[str, Any], SessionConfig] = None) -> None:
         self._host = host
         self._prefix = prefix
+
+    async def __aenter__(self) -> 'Client':
+        return self
+
+
+
+class Client:
+    host: Optional[str] = None
+    service_name: Optional[str] = None
+    prefix: str = ''
+    def __init__(self,
+                 env: Optional[str] = None,
+                 *,
+                 service_name: Optional[str] = None,
+                 prefix: str = '',
+                 host: Optional[str] = None,
+                 config: Union[None, Dict[str, Any], SessionConfig] = None) -> None:
+        # Validate arguments
+        if self.service_name and service_name:
+            raise TypeError("'service_name' specified at both class and instance level")
+        if self.prefix and prefix:
+            raise TypeError("'prefix' specified at both class and instance level")
+        # Validate config type
         if isinstance(config, (dict, type(None))):
             session_config = SessionConfig(**config or {})
         elif isinstance(config, SessionConfig):
@@ -35,10 +58,31 @@ class Client:
         else:
             raise TypeError(f"config type {type(config)} could not be recognized,"
                             " please use a dictionary or generic_cli.config.SessionConfig")
+        service_name = service_name or self.service_name
+        host = host or self.host
+        prefix = (prefix
+                  if prefix is None
+                  else self.prefix)
+        if not host:
+            if not service_name and not env:
+                raise TypeError("In auto-resolve mode both 'service_name' and 'env' must be provided")
+            log.info('Running in auto-resolve mode')
+        else:
+            log.info('Running in static mode with host: %r', host)
+        self._host = host  # If host is None - auto-resolve mode is enabled
+                           # Settings host to any value will disable auto-resolve
+        self._service_name = service_name
+        self._prefix = prefix
+        self.env = env
         self.config = session_config
-        self.session = Session()
+        self._session = Session()
 
-    async def __aenter__(self) -> 'Client':
+    async def __aenter__(self) -> 'AutoResolveClient':
+        try:
+            await self.get_host()
+        except:
+            await self.close()
+            raise
         return self
 
     async def __aexit__(self, exc_type: Type[Exception], exc: Exception, tb: TracebackType) -> None:
@@ -46,14 +90,28 @@ class Client:
 
     async def close(self) -> None:
         '''Close underlying async connections'''
-        await self.session.close()
+        await self._session.close()
 
+    @cache_for(minutes(60))
     async def get_host(self) -> str:
-        '''Returns clients host url'''
-        return self._host
+        '''
+        Returns host url
+        In the case host was passed as an argument to constructor it's going to be returned
+        In the case it wasn't - it's going to be auto-resolved based on 'service_name' and 'env'
+        '''
+        if self._host is not None:
+            return self._host
+        async with CrossRoads(self.env) as crossroads:
+            host = await crossroads.get(self._service_name)
+            log.info("Resolved %s's host to %r [name=%r env=%r]",
+                     self.__class__.__name__,
+                     host,
+                     self._service_name,
+                     self.env)
+            return host
 
     async def get_base_url(self) -> str:
-        '''Returns clients base url'''
+        '''Returns client's base url'''
         host = await self.get_host()
         return f'{host}{self._prefix}'
 
@@ -63,7 +121,7 @@ class Client:
         base_url = await self.get_base_url()
         url = f'{base_url}{path}'
         log.info('Getting url %r', url)
-        async with self.session.request(method, url, **kw) as res:
+        async with self._session.request(method, url, **kw) as res:
             yield res
 
     @asynccontextmanager
@@ -95,55 +153,3 @@ class Client:
         '''Issues a head request'''
         async with self.issue('HEAD', *a, **kw) as res:
             yield res
-
-
-class AutoResolveClient(Client):
-    host: Optional[str] = None
-    service_name: Optional[str] = None
-    prefix: str = ''
-    def __init__(self,
-                 env: Optional[str] = None,
-                 name: Optional[str] = None,
-                 host: Optional[str] = None,
-                 prefix: str = '',
-                 config: Union[None, Dict[str, Any], SessionConfig] = None) -> None:
-        if self.service_name and name:
-            raise TypeError("'service_name' specified at both class and instance level")
-        if self.host and host:
-            raise TypeError("'host' specified at both class and instance level")
-        if self.prefix and prefix:
-            raise TypeError("'prefix' specified at both class and instance level")
-        name = name or self.service_name
-        host = host or self.host
-        prefix = (prefix
-                  if prefix is None
-                  else self.prefix)
-        if not host:
-            if not name and not env:
-                raise TypeError("In auto-resolve mode both 'service_name' and 'env' must be provided")
-        super().__init__(host, prefix, config)
-        self.name = name
-        self.env = env
-
-    async def __aenter__(self) -> 'AutoResolveClient':
-        try:
-            import inspect
-            print(inspect.signature(self.get_host))
-            await self.get_host()
-        except:
-            await self.close()
-            raise
-        return self
-
-    @cache_for(minutes(60))
-    async def get_host(self) -> str:
-        if self._host is not None:
-            return await super().get_host()
-        async with CrossRoads(self.env) as crossroads:
-            host = await crossroads.get(self.name)
-            log.info("Resolved %s's host to %r [name=%r env=%r]",
-                     self.__class__.__name__,
-                     host,
-                     self.name,
-                     self.env)
-            return host

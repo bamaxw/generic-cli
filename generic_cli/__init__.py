@@ -1,1 +1,1 @@
-from .client import Client, AutoResolveClient
+from .client import Client
