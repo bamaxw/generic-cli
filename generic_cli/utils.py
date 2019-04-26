@@ -1,24 +1,36 @@
-from typing import Any, Awaitable, Callable, Dict
+'''Utility functions and classes for core generic-cli'''
+from typing import Any, Awaitable, Callable, Dict, TypeVar, Union
 from functools import wraps
 import inspect
 import time
 
+T = TypeVar('T')
+AsyncMethod = Callable[[Any], Awaitable[T]]
+AsyncFunc = Callable[[], Awaitable[T]]
+AsyncCallable = Union[AsyncMethod, AsyncFunc]
+
 
 def minutes(mins: float) -> float:
+    '''Returns amount of seconds in that many minutes'''
     return mins * 60
 
 
 def cache_for(seconds: float) -> 'CacheFor':
+    '''Same as CacheFor()'''
     return CacheFor(seconds)
 
 
 class CacheFor:
-    _func_cache: Dict[Callable[[object], Awaitable[Any]], Any] = {}
-    _func_timestamps: Dict[Callable[[object], Awaitable[Any]], float] = {}
+    '''
+    Caches function response for the amount of seconds
+    specified in timeout argument passed to the class constructor
+    '''
+    _func_cache: Dict[AsyncCallable, Any] = {}
+    _func_timestamps: Dict[AsyncCallable, float] = {}
     def __init__(self, timeout: float) -> None:
         self.timeout = timeout
 
-    def __call__(self, func: Callable[[object], Awaitable[Any]]) -> Callable[[object], Awaitable[Any]]:
+    def __call__(self, func: AsyncCallable) -> AsyncCallable:
         sig = inspect.signature(func)
         params = sig.parameters
         if len(params) > 1 or (len(params) == 1 and 'self' not in params):

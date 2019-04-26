@@ -10,6 +10,9 @@ upload: test vpatch
 	devpi upload
 	rm -r dist
 
+example:
+	pipenv run python example.py
+
 install-locally:
 	pip install -U .
 
