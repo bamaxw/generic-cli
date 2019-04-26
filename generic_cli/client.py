@@ -5,11 +5,13 @@ from types import TracebackType
 import logging
 
 from aiohttp import ClientResponse as Response, ClientSession as Session
+from tenacity import retry, retry_if_exception_type
 
 from crossroads import CrossRoads
 
 from .utils import cache_for, minutes
 from .config import SessionConfig, PolicyType
+from .signals import ShouldRetry
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +67,7 @@ class Client:
         self._prefix = prefix
         self.env = env
         self.config = session_config
+        self.issue = retry(**self.config.retry_policy, retry=retry_if_exception_type(ShouldRetry))(self.issue)
         self._session = Session()
 
     async def __aenter__(self) -> 'AutoResolveClient':
@@ -105,6 +108,14 @@ class Client:
         host = await self.get_host()
         return f'{host}{self._prefix}'
 
+    def _check_status(self, status: int) -> None:
+        str_status = str(status)
+        retry_codes = self.config.retry_codes
+        if (str_status in retry_codes
+                or f'{str_status[:2]}x' in retry_codes
+                or f'{str_status[:1]}xx' in retry_codes):
+            raise ShouldRetry()
+
     @asynccontextmanager
     async def issue(self, method: str, path: str, **kw) -> AsyncIterator[Response]:
         '''Manages all request dispatches'''
@@ -112,6 +123,7 @@ class Client:
         url = f'{base_url}{path}'
         log.info('Getting url %r', url)
         async with self._session.request(method, url, **kw) as res:
+            self._check_status(res.status)
             yield res
 
     @asynccontextmanager
