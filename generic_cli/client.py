@@ -91,7 +91,7 @@ class AutoResolveClient(Client):
     async def get_host(self) -> str:
         if self._host is not None:
             return await super().get_host()
-        with CrossRoads(self.env) as crossroads:
+        async with CrossRoads(self.env) as crossroads:
             host = await crossroads.get(self.name)
             log.info("Resolved %s's host to %r [name=%r env=%r]",
                      self.__class__.__name__,
