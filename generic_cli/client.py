@@ -21,7 +21,7 @@ class Client:
     # Client allows some attributes to be set in a declarative way
     # like so
     # Client attributes
-    __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '_session')
+    __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '_session', 'issue')
     host: Optional[str] = None
     service_name: Optional[str] = None
     prefix: str = ''
@@ -70,7 +70,7 @@ class Client:
         self.config = session_config
         self.issue = return_from_signal(retry(**self.config.retry_policy,
                                               retry=retry_if_exception_type(ShouldRetry),
-                                              sleep=asyncio.sleep)(self.issue))
+                                              sleep=asyncio.sleep)(self._issue))
         self._session = Session()
 
     async def __aenter__(self) -> 'AutoResolveClient':
@@ -120,7 +120,7 @@ class Client:
             raise ShouldRetry(response)
 
     @asynccontextmanager
-    async def issue(self, method: str, path: str, **kw) -> AsyncIterator[Response]:
+    async def _issue(self, method: str, path: str, **kw) -> AsyncIterator[Response]:
         '''Manages all request dispatches'''
         base_url = await self.get_base_url()
         url = f'{base_url}{path}'

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from functools import wraps
 
 
@@ -18,10 +19,12 @@ class ShouldRetry(Signal):
 
 
 def return_from_signal(func):
+    @asynccontextmanager
     @wraps(func)
-    def _wrapper(*a, **kw):
+    async def _wrapper(*a, **kw):
         try:
-            return func(*a, **kw)
+            async with func(*a, **kw) as res:
+                yield res
         except Signal as sig:
-            return sig._return
+            yield sig._return
     return _wrapper
