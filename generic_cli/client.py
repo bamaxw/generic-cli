@@ -2,6 +2,7 @@ from typing import Any, AsyncIterator, Container, Dict, Optional, Type, Union
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from types import TracebackType
+import asyncio
 import logging
 
 from aiohttp import ClientResponse as Response, ClientSession as Session
@@ -11,7 +12,7 @@ from crossroads import CrossRoads
 
 from .utils import cache_for, minutes
 from .config import SessionConfig, PolicyType
-from .signals import ShouldRetry
+from .signals import ShouldRetry, return_from_signal
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +68,9 @@ class Client:
         self._prefix = prefix
         self.env = env
         self.config = session_config
-        self.issue = retry(**self.config.retry_policy, retry=retry_if_exception_type(ShouldRetry))(self.issue)
+        self.issue = return_from_signal(retry(**self.config.retry_policy,
+                                              retry=retry_if_exception_type(ShouldRetry),
+                                              sleep=asyncio.sleep)(self.issue))
         self._session = Session()
 
     async def __aenter__(self) -> 'AutoResolveClient':
@@ -108,13 +111,13 @@ class Client:
         host = await self.get_host()
         return f'{host}{self._prefix}'
 
-    def _check_status(self, status: int) -> None:
-        str_status = str(status)
+    def _check_status(self, response: Response) -> None:
+        str_status = str(response.status)
         retry_codes = self.config.retry_codes
         if (str_status in retry_codes
                 or f'{str_status[:2]}x' in retry_codes
                 or f'{str_status[:1]}xx' in retry_codes):
-            raise ShouldRetry()
+            raise ShouldRetry(response)
 
     @asynccontextmanager
     async def issue(self, method: str, path: str, **kw) -> AsyncIterator[Response]:
@@ -123,7 +126,7 @@ class Client:
         url = f'{base_url}{path}'
         log.info('Getting url %r', url)
         async with self._session.request(method, url, **kw) as res:
-            self._check_status(res.status)
+            self._check_status(res)
             yield res
 
     @asynccontextmanager
