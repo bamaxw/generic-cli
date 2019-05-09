@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 from functools import wraps
 
+import tenacity
+
 
 class Signal(Exception):
     '''
@@ -20,9 +22,13 @@ class ShouldRetry(Signal):
 
 def return_from_signal(func):
     @wraps(func)
-    def _wrapper(*a, **kw):
+    async def _wrapper(*a, **kw):
         try:
-            return func(*a, **kw)
-        except Signal as sig:
-            return sig._return
+            return await func(*a, **kw)
+        except tenacity.RetryError as rex:
+            try:
+                rex.reraise()
+            except Signal as sig:
+                return sig._return
+
     return _wrapper
