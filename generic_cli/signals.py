@@ -20,9 +20,9 @@ class ShouldRetry(Signal):
 
 def return_from_signal(func):
     @wraps(func)
-    async def _wrapper(*a, **kw):
+    def _wrapper(*a, **kw):
         try:
-            return await func(*a, **kw)
+            return func(*a, **kw)
         except Signal as sig:
             return sig._return
     return _wrapper
