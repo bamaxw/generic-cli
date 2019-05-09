@@ -21,7 +21,7 @@ class Client:
     # Client allows some attributes to be set in a declarative way
     # like so
     # Client attributes
-    __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '_session', 'issue')
+    __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '_session', 'retriable_issue')
     host: Optional[str] = None
     service_name: Optional[str] = None
     prefix: str = ''
@@ -68,9 +68,9 @@ class Client:
         self._prefix = prefix
         self.env = env
         self.config = session_config
-        self.issue = return_from_signal(retry(**self.config.retry_policy,
-                                              retry=retry_if_exception_type(ShouldRetry),
-                                              sleep=asyncio.sleep)(self._issue))
+        self.retriable_issue = return_from_signal(retry(**self.config.retry_policy,
+                                                        retry=retry_if_exception_type(ShouldRetry),
+                                                        sleep=asyncio.sleep)(self._retriable_issue))
         self._session = Session()
 
     async def __aenter__(self) -> 'AutoResolveClient':
@@ -119,14 +119,18 @@ class Client:
                 or f'{str_status[:1]}xx' in retry_codes):
             raise ShouldRetry(response)
 
-    @asynccontextmanager
-    async def _issue(self, method: str, path: str, **kw) -> AsyncIterator[Response]:
+    async def _retriable_issue(self, method: str, path: str, **kw) -> Response:
         '''Manages all request dispatches'''
         base_url = await self.get_base_url()
         url = f'{base_url}{path}'
         log.info('Getting url %r', url)
-        async with self._session.request(method, url, **kw) as res:
-            self._check_status(res)
+        res = await self._session.request(method, url, **kw)
+        self._check_status(res)
+        return res
+
+    @asynccontextmanager
+    async def issue(self, method: str, path: str, **kw) -> AsyncIterator[Response]:
+        async with await self.retriable_issue(method, path, **kw) as res:
             yield res
 
     @asynccontextmanager
