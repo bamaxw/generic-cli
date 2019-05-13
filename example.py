@@ -22,6 +22,11 @@ async def main():
             print(res)
             pprint(await res.text())
 
+    async with Client(host='http://localhost:81', config=dict(on_connerr=True)) as cli:
+        async with cli.get('/healthcheck') as res:
+            print(res)
+            pprint(await res.text())
+
 
 if __name__ == '__main__':
     asyncio.run(main())

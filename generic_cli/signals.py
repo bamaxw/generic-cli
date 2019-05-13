@@ -29,6 +29,8 @@ def return_from_signal(func):
             try:
                 rex.reraise()
             except Signal as sig:
+                if isinstance(sig._return, Exception):
+                    raise sig._return
                 return sig._return
 
     return _wrapper

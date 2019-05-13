@@ -1,5 +1,5 @@
 from typing import Any, AsyncIterator, Container, Dict, Optional, Type, Union
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from types import TracebackType
 import asyncio
@@ -119,13 +119,21 @@ class Client:
                 or f'{str_status[:1]}xx' in retry_codes):
             raise ShouldRetry(response)
 
+    @contextmanager
+    def _check_error(self) -> None:
+        try:
+            yield
+        except self.config.retry_errors as ex:
+            raise ShouldRetry(ex)
+
     async def _retriable_issue(self, method: str, path: str, **kw) -> Response:
         '''Manages all request dispatches'''
         base_url = await self.get_base_url()
         url = f'{base_url}{path}'
         log.info('Getting url %r', url)
-        res = await self._session.request(method, url, **kw)
-        self._check_status(res)
+        with self._check_error():
+            res = await self._session.request(method, url, **kw)
+            self._check_status(res)
         return res
 
     @asynccontextmanager
