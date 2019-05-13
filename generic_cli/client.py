@@ -1,7 +1,8 @@
-from typing import Any, AsyncIterator, Container, Dict, Optional, Type, Union
+from typing import Any, AsyncIterator, cast, Container, Dict, Optional, Type, Union
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from types import TracebackType
+from datetime import datetime
 import asyncio
 import logging
 
@@ -21,7 +22,8 @@ class Client:
     # Client allows some attributes to be set in a declarative way
     # like so
     # Client attributes
-    __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '_session', 'retriable_issue')
+    __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '__resolving',
+                 '__resolved', '_static', '_session', 'retriable_issue')
     host: Optional[str] = None
     service_name: Optional[str] = None
     prefix: str = ''
@@ -51,19 +53,26 @@ class Client:
         else:
             raise TypeError(f"config type {type(config)} could not be recognized,"
                             " please use a dictionary or generic_cli.config.SessionConfig")
+
         service_name = service_name or self.service_name
         host = host or self.host
         prefix = (prefix
                   if prefix is None
                   else self.prefix)
+        self._static: bool  #  If the host is present as an initialization parameter
+                            #  the Client is not going to resolve the service's host
+                            #  but rather always use the passed host
         if not host:
+            self._static = False
             if not service_name and not env:
                 raise TypeError("In auto-resolve mode both 'service_name' and 'env' must be provided")
             log.info('Running in auto-resolve mode')
         else:
+            self._static = True
             log.info('Running in static mode with host: %r', host)
-        self._host = host  # If host is None - auto-resolve mode is enabled
-                           # Settings host to any value will disable auto-resolve
+        self.__resolving = False
+        self.__resolved: asyncio.Event
+        self._host = host
         self._service_name = service_name
         self._prefix = prefix
         self.env = env
@@ -74,12 +83,16 @@ class Client:
         self._session = Session()
 
     async def __aenter__(self) -> 'AutoResolveClient':
+        await self.open()
+        return self
+
+    async def open(self) -> None:
+        '''Asynchroneously initialize Client'''
         try:
             await self.get_host()
         except:
             await self.close()
             raise
-        return self
 
     async def __aexit__(self, exc_type: Type[Exception], exc: Exception, tb: TracebackType) -> None:
         await self.close()
@@ -88,15 +101,29 @@ class Client:
         '''Close underlying async connections'''
         await self._session.close()
 
-    @cache_for(minutes(60))
     async def get_host(self) -> str:
         '''
         Returns host url
         In the case host was passed as an argument to constructor it's going to be returned
         In the case it wasn't - it's going to be auto-resolved based on 'service_name' and 'env'
         '''
+        if self._static:
+            return cast(str, self._host)
         if self._host is not None:
             return self._host
+        await self.resolve_host()
+        return cast(str, self._host)
+
+    async def resolve_host(self) -> None:
+        '''
+        Uses CrossRoads service discovery to determine
+        corresponding service's host and saves it to self._host
+        '''
+        if self.__resolving:
+            await self._wait_for_host_resolution()
+            return
+        self.__resolving = True
+        self.__resolved = asyncio.Event()
         async with CrossRoads(self.env) as crossroads:
             host = await crossroads.get(self._service_name)
             log.info("Resolved %s's host to %r [name=%r env=%r]",
@@ -104,7 +131,12 @@ class Client:
                      host,
                      self._service_name,
                      self.env)
-            return host
+            self._host = host
+            self.__resolving = False
+            self.__resolved.set()
+
+    async def _wait_for_host_resolution(self) -> None:
+        await self.__resolved.wait()
 
     async def get_base_url(self) -> str:
         '''Returns client's base url'''
@@ -130,7 +162,7 @@ class Client:
         '''Manages all request dispatches'''
         base_url = await self.get_base_url()
         url = f'{base_url}{path}'
-        log.info('Getting url %r', url)
+        log.info('[%r] Getting url %r', datetime.now().strftime('%H:%M:%S.%f'), url)
         with self._check_error():
             res = await self._session.request(method, url, **kw)
             self._check_status(res)

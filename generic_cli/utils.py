@@ -55,11 +55,11 @@ class CacheFor:
 
     def _decorate_method(self, func: AsyncMethod[T]) -> AsyncMethod[T]:
         @wraps(func)
-        async def _method_wrapper(instance, no_cache: bool = False) -> T:
-            key = (instance, func)
+        async def _method_wrapper(self, no_cache: bool = False) -> T:
+            key = (self, func)
             next_call_ts = self._func_timestamps.get(key, 0)
             if no_cache or next_call_ts <= time.time():
-                self._func_cache[key] = await func(instance)
+                self._func_cache[key] = await func(self)
                 self._func_timestamps[key] = time.time() + self.timeout
             return self._func_cache[key]
         return _method_wrapper
