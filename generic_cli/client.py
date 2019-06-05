@@ -24,7 +24,7 @@ class Client:
     # like so
     # Client attributes
     __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '__resolving',
-                 '__resolved', '_static', '_session', 'retriable_issue', '_exceptions')
+                 '__resolved', '_static', '_session', 'retriable_issue', 'exceptions')
     host: Optional[str] = None
     service_name: Optional[str] = None
     prefix: str = ''
@@ -33,6 +33,7 @@ class Client:
     retry_codes: Optional[Container[Union[str, int]]]
     retry_policy: Dict[str, PolicyType]
     timeout: int
+    exceptions: Dict[str, Type[Exception]]
     def __init__(self,
                  env: Optional[str] = None,
                  *,
@@ -83,7 +84,10 @@ class Client:
                                                         retry=retry_if_exception_type(ShouldRetry),
                                                         sleep=asyncio.sleep)(self._retriable_issue))
         self._session = Session()
-        self._exceptions = exceptions or {}
+        try:
+            self.exceptions = exceptions or self.exceptions
+        except AttributeError:
+            self.exceptions = {}
 
     async def __aenter__(self) -> 'AutoResolveClient':
         await self.open()
@@ -107,7 +111,7 @@ class Client:
 
     def register_exception_cls(self, name: str, cls: Type[Exception]) -> None:
         '''Registers an exception class to be used on appropriate error responses'''
-        self._exceptions[name] = cls
+        self.exceptions[name] = cls
 
     async def get_host(self) -> str:
         '''
@@ -184,7 +188,7 @@ class Client:
                     payload = await res.json(loads=json.loads)
                     if (payload.get('status') == 'error'
                             and payload.get('cls') is not None):
-                        cls = self._exceptions.get(payload.get('cls'))
+                        cls = self.exceptions.get(payload.get('cls'))
                         if cls is not None:
                             raise cls(payload)
                 except:
