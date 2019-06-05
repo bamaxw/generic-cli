@@ -11,6 +11,7 @@ from tenacity import retry, retry_if_exception_type
 
 from crossroads import CrossRoads
 
+from .json import json
 from .utils import cache_for, minutes
 from .config import SessionConfig, PolicyType
 from .signals import ShouldRetry, return_from_signal
@@ -23,7 +24,7 @@ class Client:
     # like so
     # Client attributes
     __slots__ = ('_service_name', '_prefix', '_host', 'env', 'config', '__resolving',
-                 '__resolved', '_static', '_session', 'retriable_issue')
+                 '__resolved', '_static', '_session', 'retriable_issue', '_exceptions')
     host: Optional[str] = None
     service_name: Optional[str] = None
     prefix: str = ''
@@ -38,7 +39,8 @@ class Client:
                  service_name: Optional[str] = None,
                  prefix: str = '',
                  host: Optional[str] = None,
-                 config: Union[None, Dict[str, Any], SessionConfig] = None) -> None:
+                 config: Union[None, Dict[str, Any], SessionConfig] = None,
+                 exceptions: Optional[Dict[str, Type[Exception]]] = None) -> None:
         # Validate arguments
         if self.service_name and service_name:
             raise TypeError("'service_name' specified at both class and instance level")
@@ -81,6 +83,7 @@ class Client:
                                                         retry=retry_if_exception_type(ShouldRetry),
                                                         sleep=asyncio.sleep)(self._retriable_issue))
         self._session = Session()
+        self._exceptions = exceptions or {}
 
     async def __aenter__(self) -> 'AutoResolveClient':
         await self.open()
@@ -100,6 +103,11 @@ class Client:
     async def close(self) -> None:
         '''Close underlying async connections'''
         await self._session.close()
+
+
+    def register_exception_cls(self, name: str, cls: Type[Exception]) -> None:
+        '''Registers an exception class to be used on appropriate error responses'''
+        self._exceptions[name] = cls
 
     async def get_host(self) -> str:
         '''
@@ -171,6 +179,16 @@ class Client:
     @asynccontextmanager
     async def issue(self, method: str, path: str, **kw) -> AsyncIterator[Response]:
         async with await self.retriable_issue(method, path, **kw) as res:
+            if res.status != 200:
+                try:
+                    payload = await res.json(loads=json.loads)
+                    if (payload.get('status') == 'error'
+                            and payload.get('cls') is not None):
+                        cls = self._exceptions.get(payload.get('cls'))
+                        if cls is not None:
+                            raise cls(payload)
+                except:
+                    raise
             yield res
 
     @asynccontextmanager
